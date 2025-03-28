@@ -606,12 +606,13 @@ class VLMGRPOTrainer(Trainer):
                 ref_per_token_logps = self._get_per_token_logps(
                     self.ref_model, prompt_completion_ids, attention_mask, **multimodal_inputs
                 )
+                ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
             else:
                 with self.accelerator.unwrap_model(model).disable_adapter():
                     ref_per_token_logps = self._get_per_token_logps(
                         model, prompt_completion_ids, attention_mask, **multimodal_inputs
                     )
-        ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
+                    ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
 
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
@@ -739,7 +740,7 @@ class VLMGRPOTrainer(Trainer):
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
 
         # Add KL penalty if beta > 0
-        if self.beta > 0:
+        if self.beta > 0 and inputs["ref_per_token_logps"] is not None:
             ref_per_token_logps = inputs["ref_per_token_logps"]
             per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
             per_token_loss = per_token_loss + self.beta * per_token_kl
