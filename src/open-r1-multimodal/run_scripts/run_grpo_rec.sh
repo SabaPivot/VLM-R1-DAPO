@@ -1,4 +1,4 @@
-cd /workspace/VLM-R1/src/open-r1-multimodal
+cd /workspace/VLM-R1-DAPO/src/open-r1-multimodal
 
 export DEBUG_MODE="true"
 export CUDA_VISIBLE_DEVICES=1,2
@@ -16,7 +16,7 @@ torchrun --nproc_per_node="2" \
     --output_dir output/$RUN_NAME \
     --model_name_or_path Qwen/Qwen2.5-VL-3B-Instruct \
     --dataset_name data_config/rec.yaml \
-    --image_root /data \
+    --image_root /workspace/data/NIH_CXR \
     --max_prompt_length 1024 \
     --num_generations 2 \
     --per_device_train_batch_size 1 \

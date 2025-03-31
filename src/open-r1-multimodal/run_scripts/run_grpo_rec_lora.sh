@@ -5,7 +5,7 @@ cd /workspace/VLM-R1-DAPO/src/open-r1-multimodal
 
 export DEBUG_MODE="true"
 export CUDA_VISIBLE_DEVICES=1,2
-RUN_NAME="Qwen2.5-VL-3B-GRPO-REC-lora-SFT-10992steps-continuous-iou"
+RUN_NAME="Qwen2.5-VL-3B-GRPO-REC-lora-SFT-10992steps-continuous-iou>0.3"
 export LOG_PATH="./debug_log_$RUN_NAME.txt"
 
 
@@ -13,11 +13,11 @@ torchrun --nproc_per_node="2" \
     --nnodes="1" \
     --node_rank="0" \
     --master_addr="127.0.0.1" \
-    --master_port="12346" \
+    --master_port="12347" \
     src/open_r1/grpo_rec.py \
     --deepspeed local_scripts/zero2.json \
     --output_dir output/$RUN_NAME \
-    --model_name_or_path Qwen/Qwen2.5-VL-3B-Instruct \
+    --model_name_or_path /workspace/Qwen2.5-VL-combined \
     --dataset_name data_config/rec.yaml \
     --image_root /workspace/data/NIH_CXR \
     --max_prompt_length 1024 \
@@ -43,5 +43,6 @@ torchrun --nproc_per_node="2" \
     --lora_task_type CAUSAL_LM \
     --freeze_vision_modules true \
     --beta 0.0 \
-    --epsilon_high 0.28
+    --epsilon_high 0.28 \
+    --reward_weights 0.8 0.2
 
