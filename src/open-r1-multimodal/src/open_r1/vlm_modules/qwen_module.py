@@ -2,6 +2,7 @@ from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2VLForCondition
 from typing import Dict, Any, Union
 from trl.data_utils import maybe_apply_chat_template
 import torch
+import re
 
 from open_r1.vlm_modules.vlm_module import VLMBaseModule
 
@@ -118,9 +119,9 @@ class Qwen2VLModule(VLMBaseModule):
                     bbox_match = re.search(bbox_pattern, content_answer)
                     if bbox_match:
                         bbox = [int(bbox_match.group(1)), int(bbox_match.group(2)), int(bbox_match.group(3)), int(bbox_match.group(4))]
-                        # if iou(bbox, sol) > 0.5:
-                        #     reward = 1.0
-                        reward = iou(bbox, sol)
+                        if iou(bbox, sol) > 0.3:
+                            reward = 1.0
+                        # reward = iou(bbox, sol)
             except Exception:
                 pass  # Continue to next verification method if this fails
                     
