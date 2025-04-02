@@ -289,15 +289,20 @@ class VLMGRPOTrainer(Trainer):
             model = self._enable_gradient_checkpointing(model, args)
 
         # Reference model
+        # Initialize ref_model as None by default
+        # It will be created if:
+        # 1. DeepSpeed Zero3 is enabled OR
+        # 2. PEFT is not used AND beta > 0 (needed for KL penalty)
+        # Otherwise it remains None (especially when using PEFT)
+        self.ref_model = None
         if is_deepspeed_zero3_enabled():
+            # Zero3 might handle reference model loading/partitioning differently
             self.ref_model = model_cls.from_pretrained(model_id, **model_init_kwargs)
         elif peft_config is None:
-            # If PEFT configuration is not provided, create a reference model based on the initial model.
-            self.ref_model = create_reference_model(model)
-        else:
-            # If PEFT is used, the reference model is not needed since the adapter can be disabled
-            # to revert to the initial model.
-            self.ref_model = None
+            # If not using PEFT (full fine-tuning)
+            if args.beta > 0.0: # Only create ref model if needed for KL penalty
+                self.ref_model = create_reference_model(model)
+        # else: PEFT is used, self.ref_model remains None, which is correct.
 
         # Processing class
         if processing_class is None:
@@ -432,10 +437,17 @@ class VLMGRPOTrainer(Trainer):
         # self.model_accepts_loss_kwargs to False to enable scaling.
         self.model_accepts_loss_kwargs = False
 
+        # Prepare the ref_model if it was created
         if self.ref_model is not None:
             if self.is_deepspeed_enabled:
-                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
+                 # If Zero3, prepare it with Deepspeed's initialize
+                 if is_deepspeed_zero3_enabled():
+                     self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
+                 else:
+                     # For Zero1/2, just prepare normally for evaluation
+                     self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
             else:
+                # Not using Deepspeed, prepare normally for evaluation
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
         for i, reward_func in enumerate(self.reward_funcs):
@@ -652,8 +664,28 @@ class VLMGRPOTrainer(Trainer):
         # Gather rewards across processes
         rewards_per_func = self.accelerator.gather(rewards_per_func)
         
-        # Sum the rewards from all reward functions
-        rewards = rewards_per_func.sum(dim=1)
+        # Apply reward weights if provided
+        reward_weights = self.args.reward_weights
+        if reward_weights is not None:
+            if len(reward_weights) == rewards_per_func.shape[1]:
+                # Convert weights to tensor on the correct device and dtype
+                weights_tensor = torch.tensor(
+                    reward_weights,
+                    device=rewards_per_func.device,
+                    dtype=rewards_per_func.dtype
+                )
+                # Perform element-wise multiplication and then sum
+                rewards = (rewards_per_func * weights_tensor).sum(dim=1)
+            else:
+                warnings.warn(
+                    f"Length of reward_weights ({len(reward_weights)}) does not match the number of "
+                    f"reward functions ({rewards_per_func.shape[1]}). Using equal weights (1.0)."
+                )
+                # Fall back to equal weights if mismatch
+                rewards = rewards_per_func.sum(dim=1)
+        else:
+            # Default: Sum the rewards from all reward functions with equal weight (1.0)
+            rewards = rewards_per_func.sum(dim=1)
         
         # Compute grouped-wise rewards
         # Each group consists of num_generations completions for the same prompt
