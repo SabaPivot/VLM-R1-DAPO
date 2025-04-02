@@ -23,19 +23,15 @@
 
 import os
 import re
-from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Optional
 
 from PIL import Image
 from torch.utils.data import Dataset
-from transformers import Qwen2VLForConditionalGeneration
 
-from math_verify import parse, verify
 from open_r1.trainer import VLMGRPOTrainer, GRPOConfig
 from open_r1.vlm_modules import *
 from trl import ModelConfig, ScriptArguments, TrlParser, get_peft_config
-from transformers import TrainingArguments
 import yaml
 import json
 import random
@@ -56,12 +52,6 @@ def custom_forward(
         q, k, v = self.qkv(hidden_states).reshape(seq_length, 3, self.num_heads, -1).permute(1, 0, 2, 3).unbind(0)
         # print(111, 222, 333, 444, 555, 666, 777, 888, 999)
         if position_embeddings is None:
-            logger.warning_once(
-                "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
-                "through `rotary_pos_emb` (2D tensor of RoPE theta values), to using externally computed "
-                "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.54 `rotary_pos_emb` will be "
-                "removed and `position_embeddings` will be mandatory."
-            )
             emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
             cos = emb.cos().float()
             sin = emb.sin().float()
@@ -94,7 +84,6 @@ class GRPOScriptArguments(ScriptArguments):
         reward_funcs (`list[str]`):
             List of reward functions. Possible values: 'accuracy', 'format'.
     """
-
     reward_funcs: list[str] = field(
         default_factory=lambda: ["accuracy", "format"],
         metadata={"help": "List of reward functions. Possible values: 'accuracy', 'format'"},
@@ -119,7 +108,6 @@ class GRPOScriptArguments(ScriptArguments):
 @dataclass
 class GRPOModelConfig(ModelConfig):
     freeze_vision_modules: bool = False
-
 
 SYSTEM_PROMPT = (
     "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant "
