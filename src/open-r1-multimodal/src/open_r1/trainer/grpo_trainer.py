@@ -774,8 +774,16 @@ class VLMGRPOTrainer(Trainer):
             mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
             self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
-        # Compute final loss
-        loss = ((per_token_loss * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
+        # Compute final loss (DAPO: average over all tokens in the batch)
+        # Previous (GRPO-style) Averaging: It first averaged the per_token_loss within each sequence in the batch (using sum(dim=1) / sum(dim=1)), resulting in a loss value per sequence. Then, it averaged these sequence-level losses across the batch (using .mean()).
+        # New (DAPO) Averaging: It now sums the per_token_loss across all completion tokens in the entire batch ((per_token_loss * completion_mask).sum()) and divides by the total number of completion tokens (total_tokens).
+        total_tokens = completion_mask.sum()
+        if total_tokens == 0:
+             # Handle cases where the batch might contain only prompts or empty completions
+             # Use a tensor that requires grad to avoid issues in backward pass
+             loss = torch.tensor(0.0, device=per_token_loss.device, requires_grad=True)
+        else:
+             loss = (per_token_loss * completion_mask).sum() / total_tokens
 
         # Log clip ratio
         is_clipped = (per_token_loss1 < per_token_loss2).float()
